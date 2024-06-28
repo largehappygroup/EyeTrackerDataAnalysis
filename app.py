@@ -15,9 +15,9 @@ import geopandas as gpd
 from shapely.geometry import Point, Polygon
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 reader = easyocr.Reader(['en'])
-global image_path
 
 #the following function checks if the device type is valid and reads in the csv file
+@st.cache_data
 def input_raw_data(file, device_type):
     if device_type == 'Tobii':
         data = pd.read_csv(file) 
@@ -28,6 +28,7 @@ def input_raw_data(file, device_type):
     return data
 
 #the following function creates an array of files from the files uploaded and returns it to the caller
+@st.cache_data
 def make_list(file_list, device_type):
     all_data = []
     for uploaded_file in file_list:
@@ -298,7 +299,7 @@ def bounding_box_part4():
     bounding_box_part5()
 
 #zach's third step
-def bounding_box_part3():
+def bounding_box_part3(uploaded_file):
     # eye_files = os.listdir('../data/168/gaze/') # eye-tracking file
     box_files = os.listdir('./word_coordinates/') # all bounding boxes
     img_files = os.listdir('./stimuli/') # screenshots of all the stimuli
@@ -411,6 +412,7 @@ def bounding_box_part2():
         
 
 #zach's first step
+@st.cache_data
 def bounding_box_part1(pic):
     stimdf = pd.read_csv('pruned_seeds2.csv')
     temp_file_path = f"./temp/{pic.name}"
@@ -508,11 +510,10 @@ def step_1():
 
 def step_2():
     st.title("STEP 2")
-    global image_path
     #creates UI for uploading files
     uploaded_file = st.file_uploader("Upload your eye-tracking data files", accept_multiple_files=True, type=['csv'])
     device_type = st.selectbox("Select device type", ['Tobii', 'WebGazer']) 
-    image_path = st.file_uploader("Upload images to overlay bounding boxes", accept_multiple_files=False, type=['png', 'jpg', 'jpeg']) 
+    image_path = st.file_uploader("Upload images to overlay bounding boxes", accept_multiple_files=False, type=['png', 'jpg', 'jpeg'])
 
     if st.button('Process Data'):
         if uploaded_file and image_path: 
@@ -521,7 +522,16 @@ def step_2():
                 bounding_box_part1(image_path)
                 #ask about how to get this to stop reloading
                 name = image_path.name.split('.png')[0]
-                st.write("Manually correct file, then move onto step 3.")
+                output_image = cv2.imread("./temp/{name}/{c}_func.png".format(c=name, name=name))
+                st.image(output_image, use_column_width=True)
+                byte_img = cv2.imencode(".png", output_image)[1].tobytes()
+                st.download_button(
+                    label="Download image as PNG",
+                    data=byte_img,
+                    file_name="bounding_box.png",
+                    mime="bounding_box/png",
+                )
+                st.write("Download this image to view later, then manually correct the file below before moving on to step 3.")
                 csv_dir = "./word_coordinates"
                 csv_file = "{name}_boxes.csv".format(name=name)
                 df = pd.read_csv(os.path.join(csv_dir, csv_file))
@@ -538,33 +548,120 @@ def step_3():
     uploaded_file = st.file_uploader("Upload your corrected data files", accept_multiple_files=True, type=['csv'])
     if st.button('Process Data'):
         if uploaded_file: 
-            print("success!")
-            bounding_box_part3()
+            bounding_box_part3(uploaded_file)
         else:
             st.error("Please upload corrected file")
 
-def exports():
-    global image_path
-    if image_path is not None:
-        name = image_path.name.split('.png')[0]
-        output_image = cv2.imread("./temp/{name}/{c}_func.png".format(c=name, name=name))
-        st.image(output_image, caption="Bounding Boxes", use_column_width=True)
-        byte_img = cv2.imencode(".png", output_image)[1].tobytes()
-        st.download_button(
-            label="Download image as PNG",
-            data=byte_img,
-            file_name="bounding_box.png",
-            mime="bounding_box/png",
-        )
+def parse_coordinates(coord_str):
+    match = re.match(r"\(([-+]?[0-9]*\.?[0-9]+),\s*([-+]?[0-9]*\.?[0-9]+)\)", coord_str)
+    if match:
+        return float(match.group(1)), float(match.group(2))
     else:
-        st.error("No image file available.")
+        return None, None
+
+def scanpath():
+
+    st.title('Eye Tracking Scanpath Overlay')
+
+    # File uploaders
+    uploaded_image = st.file_uploader("Choose an image file", type=["png"])
+    uploaded_csv = st.file_uploader("Choose an eye-tracking data CSV file", type=["csv"])
+
+    if uploaded_image and uploaded_csv:
+        # Read the image
+        image = cv2.imdecode(np.frombuffer(uploaded_image.read(), np.uint8), cv2.IMREAD_COLOR)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+        # Read the CSV file
+        eye_tracking_data = pd.read_csv(uploaded_csv)
+
+        if 'gaze_left_eye' in eye_tracking_data.columns and 'gaze_right_eye' in eye_tracking_data.columns:
+            left_x_coords, left_y_coords = [], []
+            right_x_coords, right_y_coords = [], []
+
+            for left_eye, right_eye in zip(eye_tracking_data['gaze_left_eye'], eye_tracking_data['gaze_right_eye']):
+                left_x, left_y = parse_coordinates(left_eye)
+                right_x, right_y = parse_coordinates(right_eye)
+
+                left_x_coords.append(left_x)
+                left_y_coords.append(left_y)
+                right_x_coords.append(right_x)
+                right_y_coords.append(right_y)
+            
+            # Plot the scanpath on the image
+            fig, ax = plt.subplots()
+            ax.imshow(image)
+
+            # Plot left eye gaze
+            ax.plot(left_x_coords, left_y_coords, marker='o', color='red', linestyle='-', label='Left Eye')
+            # Plot right eye gaze
+            ax.plot(right_x_coords, right_y_coords, marker='o', color='blue', linestyle='-', label='Right Eye')
+
+            # Add legend
+            ax.legend()
+
+            # Display the plot
+            st.pyplot(fig)
+        else:
+            st.error("CSV file must contain 'x' and 'y' columns.")
+    else:
+        st.info("Please upload both an image and a CSV file.")
+
+def heatmap():
+    st.title('Eye Tracking Heatmap Overlay')
+
+    # File uploaders
+    uploaded_image = st.file_uploader("Choose an image file", type=["png"])
+    uploaded_csv = st.file_uploader("Choose an eye-tracking data CSV file", type=["csv"])
+
+    if uploaded_image and uploaded_csv:
+        # Read the image
+        image = cv2.imdecode(np.frombuffer(uploaded_image.read(), np.uint8), cv2.IMREAD_COLOR)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+        # Read the CSV file
+        eye_tracking_data = pd.read_csv(uploaded_csv)
+
+        if 'gaze_left_eye' in eye_tracking_data.columns and 'gaze_right_eye' in eye_tracking_data.columns:
+            gaze_points = []
+
+            for left_eye, right_eye in zip(eye_tracking_data['gaze_left_eye'], eye_tracking_data['gaze_right_eye']):
+                left_x, left_y = parse_coordinates(left_eye)
+                right_x, right_y = parse_coordinates(right_eye)
+
+                if left_x is not None and left_y is not None:
+                    gaze_points.append((left_x, left_y))
+                if right_x is not None and right_y is not None:
+                    gaze_points.append((right_x, right_y))
+
+                # Convert gaze points to numpy array
+                gaze_points = np.array(gaze_points)
+
+                # Create a heatmap
+                heatmap, xedges, yedges = np.histogram2d(gaze_points[:, 0], gaze_points[:, 1], bins=100)
+                heatmap = cv2.resize(heatmap, (image.shape[1], image.shape[0]))
+
+                # Normalize the heatmap
+                heatmap = (heatmap - heatmap.min()) / (heatmap.max() - heatmap.min())
+                heatmap = np.uint8(255 * heatmap)
+                heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
+
+                # Overlay the heatmap on the image
+                overlay = cv2.addWeighted(image, 0.6, heatmap, 0.4, 0)
+
+                # Display the image with heatmap overlay
+                st.image(overlay, caption='Heatmap Overlay', use_column_width=True)
+        else:
+            st.error("CSV file must contain 'left_eye' and 'right_eye' columns.")
+    else:
+        st.info("Please upload both an image and a CSV file.")
 
 
 def main():
     if 'page' not in st.session_state:
         st.session_state.page = 'Home'
     st.sidebar.title("Navigation")
-    selection = st.sidebar.radio("Go to", ["Home", "Step 1", "Step 2", "Step 3", "Exports"], index=["Home", "Step 1", "Step 2", "Step 3", "Exports"].index(st.session_state.page), key='sidebar_radio')
+    selection = st.sidebar.radio("Go to", ["Home", "Step 1", "Step 2", "Step 3", "Scanpath", "Heatmap"], index=["Home", "Step 1", "Step 2", "Step 3", "Scanpath", "Heatmap"].index(st.session_state.page), key='sidebar_radio')
     if selection != st.session_state.page:
         st.session_state.page = selection
     # Display the selected page
@@ -580,9 +677,11 @@ def main():
     elif st.session_state.page == "Step 3":
         print("Step 3")
         step_3()
-    elif st.session_state.page == "Exports":
-        print("Exported")
-        exports()
+    elif st.session_state.page == "Scanpath":
+        print("Scan")
+        scanpath()
+    elif st.session_state.page == "Heatmap":
+        heatmap()
 
 if __name__ == "__main__":
     main()
