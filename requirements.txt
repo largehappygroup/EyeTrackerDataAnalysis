@@ -1,0 +1,16 @@
+streamlit
+pandas
+cv2
+os
+matplotlib.pyplot
+easyocr
+re
+math
+csv
+pickle
+statistics
+numpy
+difflib
+geopandas
+shapely.geometry
+
