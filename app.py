@@ -4,15 +4,20 @@ import streamlit as st
 import pandas as pd
 import cv2
 import os
+import seaborn as sns
 import matplotlib.pyplot as plt
 import easyocr
 import re
 import math
+import json
 import statistics
 import numpy as np
+import pickle
 import difflib
 import geopandas as gpd
 from shapely.geometry import Point, Polygon
+from PIL import Image, ImageDraw
+from scipy.ndimage import gaussian_filter
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 reader = easyocr.Reader(['en'])
 
@@ -37,7 +42,7 @@ def make_list(file_list, device_type):
     return all_data
 
 #zach's fifth step
-def bounding_box_part5():
+def bounding_box_part5(uploaded_file):
     Bounding_Boxes = {} # dictionary that holds geopandas shapes of all bounding boxes
     height = 1080 # height of computer screen
     width = 1920 # width of computer screen
@@ -140,6 +145,11 @@ def bounding_box_part5():
         temp = pd.DataFrame(pnt)
         temp = temp.replace({True : 1, False : ''}) # converting 'True' and 'False' to 1 and nothing
         return pd.concat([row, temp.T]) # adding this true/false information to the original row
+    if not os.path.exists(f"./gaze"):
+        os.makedirs(f"./gaze")
+        print(f'Folder "{f"./gaze"}" created.')
+    else:
+        print(f'Folder "{f"./gaze"}" already exists.')
     gaze_files = os.listdir("./gaze") #this probably should be based on what's uploaded
     reading_aois, writing_aois = make_aois()
     for file in gaze_files: # this should not be necessary in the future
@@ -211,7 +221,7 @@ def bounding_box_part5():
         #     pickle.dump(all_files, f)
 
 #zach's fourth step
-def bounding_box_part4():
+def bounding_box_part4(uploaded_file):
     box_files = os.listdir("./word_coordinates_preprocessed/")
     # checks whether the word is "null", and makes sure "null" is still put
     # into final file
@@ -289,16 +299,22 @@ def bounding_box_part4():
                 new_boxes = pd.concat([new_boxes, row.T], ignore_index=True, axis=1)
         file = re.sub("_boxes", "", file)
         new_boxes = recalculate_num_occurrences(new_boxes.T)
+        if not os.path.exists(f"./word_coordinates_split"):
+            os.makedirs(f"./word_coordinates_split")
+            print(f'Folder "{f"./word_coordinates_split"}" created.')
+        else:
+            print(f'Folder "{f"./word_coordinates_split"}" already exists.')
         new_boxes.to_csv(f"word_coordinates_split/{file}", index=False, header=[ #this should eventually populate the folder if its not there
             'word', 'occurrence', 'x', 'y', 'width', 'height', 'tobii_x',
             'tobii_y', 'tobii_width', 'tobii_height'])
     for file in box_files:
         new_boxes = pd.DataFrame()
-        print(file)
+        #print(file)
         process_file(file, new_boxes)
-    bounding_box_part5()
+    bounding_box_part5(uploaded_file)
 
 #zach's third step
+st.cache_data
 def bounding_box_part3(uploaded_file):
     # eye_files = os.listdir('../data/168/gaze/') # eye-tracking file
     box_files = os.listdir('./word_coordinates/') # all bounding boxes
@@ -338,6 +354,11 @@ def bounding_box_part3(uploaded_file):
             new_df = pd.concat([new_df, new_row], axis=1)
         new_df = new_df.T
         # new_df = new_df.drop(['Unnamed: 0'], axis=1)
+        if not os.path.exists(f"./word_coordinates_preprocessed"):
+            os.makedirs(f"./word_coordinates_preprocessed")
+            print(f'Folder "{f"./word_coordinates_preprocessed"}" created.')
+        else:
+            print(f'Folder "{f"./word_coordinates_preprocessed"}" already exists.')
         new_df.to_csv(str('./word_coordinates_preprocessed/' + box_files[i]), index=False, header=[#this should eventually populate the folder if its not there
             'word', 'predicted_word', 'x', 'y', 'width', 'height', 'tobii_x', 
             'tobii_y', 'tobii_width', 'tobii_height'])
@@ -378,11 +399,11 @@ def bounding_box_part3(uploaded_file):
             new_df.to_csv(str('./word_coordinates_preprocessed/' + box_files[i]), index=False, header=[
                 'word', 'occurrence', 'x', 'y', 'width', 'height', 'tobii_x', 
                 'tobii_y', 'tobii_width', 'tobii_height'])
-            bounding_box_part4()
+            bounding_box_part4(uploaded_file)
 
 
 #zach's second step
-def bounding_box_part2():
+def bounding_box_part2(csv, pic):
     oracle = pd.read_csv('./pruned_seeds2.csv')
     box_files = os.listdir('./word_coordinates')
 
@@ -413,8 +434,13 @@ def bounding_box_part2():
 
 #zach's first step
 @st.cache_data
-def bounding_box_part1(pic):
+def bounding_box_part1(csv, pic):
     stimdf = pd.read_csv('pruned_seeds2.csv')
+    if not os.path.exists(f"./temp"):
+        os.makedirs(f"./temp")
+        print(f'Folder "{f"./temp"}" created.')
+    else:
+        print(f'Folder "{f"./temp"}" already exists.')
     temp_file_path = f"./temp/{pic.name}"
     with open(temp_file_path, "wb") as f:
         f.write(pic.getbuffer())
@@ -435,7 +461,11 @@ def bounding_box_part1(pic):
     split = list(filter(None, split))
         # now with all the code split up, create actual bounding boxes on images
         # basically just a pipeline with cv2
-    
+    if not os.path.exists(f"./stimuli"):
+        os.makedirs(f"./stimuli")
+        print(f'Folder "{f"./stimuli"}" created.')
+    else:
+        print(f'Folder "{f"./stimuli"}" already exists.')
     img = cv2.imread('./stimuli/{pic.name}'.format(pic=pic)) # 
     img = img[100:1000, 10:1150] #make this adjustable
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -496,31 +526,55 @@ def bounding_box_part1(pic):
                 row[2] = standard
                 df.iloc[i+1, 2] = standard
     df = df.sort_values(['y', 'x'])
+    if not os.path.exists(f"./word_coordinates"):
+        os.makedirs(f"./word_coordinates")
+        print(f'Folder "{f"./word_coordinates"}" created.')
+    else:
+        print(f'Folder "{f"./word_coordinates"}" already exists.')
     pd.DataFrame.to_csv(df, "./word_coordinates/{name}_boxes.csv".format(name=name)) #this should eventually populate the folder if its not there
-    bounding_box_part2()
+    bounding_box_part2(csv, pic)
 
 def home_page():
-    st.markdown("<h1 style='text-align: center;'>VisualAnchor</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center;'>Visual Anchor</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center;'>Welcome to the home page! Proceed to step 1 using the navigation on the left.</p>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center;'>If files are already separated by participant, skip step 1 and proceed to step 2.</p>", unsafe_allow_html=True)
 
-def step_1():
-    st.title("STEP 1")
-    st.write("Step 1 content goes here.")
+def step_1(): 
+    st.title("Data Splitting")
+    st.write("Please input your CSV File to be split into separate CSV files by participant.")
+    uploaded_file = st.file_uploader("Upload your eye-tracking data file", type=['csv'])
+    if st.button('Split Data'):
+        if uploaded_file:
+            df = pd.read_csv(uploaded_file)
+            participants = df['participant_id'].unique()
+            for participant in participants:
+                participant_df = df[df['participant_id'] == participant]
+                participant_df.to_csv(f"./gaze/{participant}.csv", index=False)
+            st.success("Data split successfully.")
+        else:
+            st.error("Please upload a file to split.")
 
 def step_2():
-    st.title("STEP 2")
+    st.title("Bounding Box Creation")
     #creates UI for uploading files
+    image_path = st.file_uploader("Upload images to overlay bounding boxes", accept_multiple_files=False, type=['png', 'jpg', 'jpeg'])
     uploaded_file = st.file_uploader("Upload your eye-tracking data files", accept_multiple_files=True, type=['csv'])
     device_type = st.selectbox("Select device type", ['Tobii', 'WebGazer']) 
-    image_path = st.file_uploader("Upload images to overlay bounding boxes", accept_multiple_files=False, type=['png', 'jpg', 'jpeg'])
 
-    if st.button('Process Data'):
+    if 'clicked' not in st.session_state:
+        st.session_state.clicked = False
+
+    def click_button():
+        st.session_state.clicked = True
+
+    st.button('Process Data', on_click=click_button)
+
+    if st.session_state.clicked: #make this button stay pressed
         if uploaded_file and image_path: 
             combined_data = make_list(uploaded_file, device_type)
             for file in combined_data: #this will change eventually to restart afterwards
-                bounding_box_part1(image_path)
-                #ask about how to get this to stop reloading
+                bounding_box_part1(file, image_path)
+                global name
                 name = image_path.name.split('.png')[0]
                 output_image = cv2.imread("./temp/{name}/{c}_func.png".format(c=name, name=name))
                 st.image(output_image, use_column_width=True)
@@ -543,7 +597,7 @@ def step_2():
                     st.success("CSV file updated and downloaded.")
 
 def step_3():
-    st.title("STEP 3")
+    st.title("Advanced Data Processing")
     st.write("This step may take several minutes.")
     uploaded_file = st.file_uploader("Upload your corrected data files", accept_multiple_files=True, type=['csv'])
     if st.button('Process Data'):
@@ -567,45 +621,131 @@ def scanpath():
     uploaded_image = st.file_uploader("Choose an image file", type=["png"])
     uploaded_csv = st.file_uploader("Choose an eye-tracking data CSV file", type=["csv"])
 
-    if uploaded_image and uploaded_csv:
-        # Read the image
-        image = cv2.imdecode(np.frombuffer(uploaded_image.read(), np.uint8), cv2.IMREAD_COLOR)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-        # Read the CSV file
-        eye_tracking_data = pd.read_csv(uploaded_csv)
-
-        if 'gaze_left_eye' in eye_tracking_data.columns and 'gaze_right_eye' in eye_tracking_data.columns:
-            left_x_coords, left_y_coords = [], []
-            right_x_coords, right_y_coords = [], []
-
-            for left_eye, right_eye in zip(eye_tracking_data['gaze_left_eye'], eye_tracking_data['gaze_right_eye']):
-                left_x, left_y = parse_coordinates(left_eye)
-                right_x, right_y = parse_coordinates(right_eye)
-
-                left_x_coords.append(left_x)
-                left_y_coords.append(left_y)
-                right_x_coords.append(right_x)
-                right_y_coords.append(right_y)
-            
-            # Plot the scanpath on the image
-            fig, ax = plt.subplots()
-            ax.imshow(image)
-
-            # Plot left eye gaze
-            ax.plot(left_x_coords, left_y_coords, marker='o', color='red', linestyle='-', label='Left Eye')
-            # Plot right eye gaze
-            ax.plot(right_x_coords, right_y_coords, marker='o', color='blue', linestyle='-', label='Right Eye')
-
-            # Add legend
-            ax.legend()
-
-            # Display the plot
-            st.pyplot(fig)
-        else:
-            st.error("CSV file must contain 'x' and 'y' columns.")
+    if not os.path.exists(f"./midprocessing"):
+        os.makedirs(f"./midprocessing")
+        print(f'Folder "{f"./midprocessing"}" created.')
     else:
-        st.info("Please upload both an image and a CSV file.")
+        print(f'Folder "{f"./midprocessing"}" already exists.')
+
+    #with open("midprocessing/function_tokens.pkl", "rb") as f:
+        #function_tokens = pickle.load(f)
+    #with open("midprocessing/ASTs.pkl", "rb") as f:
+        #trees = pickle.load(f)
+    #with open("midprocessing/to_toss.pkl", "rb") as f:
+        #to_toss = pickle.load(f)
+
+    def init_variables(filepath, df):
+        aoi_start = -1
+        if re.search("reading", filepath):
+            aoi_start = df.columns.get_loc('prewritten')
+        elif re.search("writing", filepath):
+            aoi_start = df.columns.get_loc('code')
+        bb_start = df.columns.get_loc("geometry")
+        return [bb_start, aoi_start]
+    
+    def preprocess(fullpath, downsample):
+        gazedf = pd.read_csv(fullpath)
+        if downsample:
+            gazedf = gazedf[::2]  # downsample
+            gazedf = gazedf.reset_index(drop=True)
+
+        # get just the rows where participant was looking at code
+        codedf = gazedf[gazedf['code'] == 1]
+        codedf = codedf.reset_index(drop=True)
+        return codedf
+
+
+    def calculate_scan_path(filepath, codedf):
+        bb_start, aoi_start = init_variables(filepath, codedf)
+        bbdf = codedf.iloc[:, bb_start+1:aoi_start]
+        scan_path = []
+        count = 0  # used for calculating regressions later on
+        curr_token = ''
+        for i, row in bbdf.iterrows():
+            index = np.where(row == 1)[0]
+            if len(index) > 0:
+                token = bbdf.columns[index][0]
+                if token != curr_token:
+                    scan_path.append(token)
+                    curr_token = token
+                else:
+                    count += 1
+        return scan_path, count
+    
+    rscan_paths = {}
+    wscan_paths = {}
+    reading_functions = set()
+    writing_functions = set()
+    non_regressions = {}
+
+    person = uploaded_csv.name.split('_')[0]
+
+    print(person)
+    metadir = "./annotated_gaze"
+    file = uploaded_csv.name
+    downsample = True if int(person) < 300 else False
+    non_regressions[person] = {}
+    name = file.split('_')[-1]
+    name = re.sub(".csv", "", name)
+
+    # if this person's data needs to be excluded for this file
+    #if name in to_toss.keys() and int(person) in to_toss[name]:
+        #continue
+
+    fullpath = f"{metadir}/{file}"
+
+    preprocessed = preprocess(fullpath, downsample)
+    scan_path, count = calculate_scan_path(file, preprocessed)
+    #print(scan_path)
+    non_regressions[person][name] = count
+
+    if re.search("writing", file):
+        writing_functions.add(name)
+        if name not in wscan_paths:
+            wscan_paths[name] = [scan_path]
+        else:
+            wscan_paths[name].append(scan_path)
+    elif re.search("reading", file):
+        reading_functions.add(name)
+        if name not in rscan_paths:
+            rscan_paths[name] = [scan_path]
+        else:
+            rscan_paths[name].append(scan_path)
+    remote = pd.read_csv(uploaded_csv)
+    # Preprocess the remote data
+    remote = remote.drop_duplicates()
+    remote = remote.sort_index()
+    remote[['x', 'y']] = remote['geometry'].str.extract(r'POINT \((\d+\.\d+) (\d+\.\d+)\)')
+    remote[['x', 'y']] = remote[['x', 'y']].astype(float)
+
+    # Convert coordinates to pixels and create the heatmap
+    x = remote['x'].dropna() * 1920
+    y = remote['y'].dropna() * 1080
+    scan_coordinates = []
+    for i in range(len(x)):
+        new_x = round(x.iloc[i])
+        new_y = round(y.iloc[i])
+        scan_coordinates.append((new_x, new_y))
+
+    print(scan_coordinates)
+    def draw_scanpath(image, scan_coordinates):
+        draw = ImageDraw.Draw(stim_img)
+        line_color = (255, 0, 0, 64)
+        dot_color = (255, 0, 0, 32)  
+        line_width = 3
+        dot_radius = 1
+        for i in range(len(scan_coordinates) - 1):
+            draw.line((scan_coordinates[i], scan_coordinates[i+1]) , fill=line_color, width=line_width)
+        for point in scan_coordinates:
+            draw.ellipse((point[0] - dot_radius, point[1] - dot_radius, point[0] + dot_radius, point[1] + dot_radius), fill=dot_color)
+        return image
+    
+    stim_img = Image.open(uploaded_image)
+    #plt.figure(figsize=(20, 10))  # Set the size of the figure
+    overlay_image = draw_scanpath(stim_img, scan_coordinates)
+    st.image(overlay_image, caption='Scanpath Overlay')
+
+    print("Scanpaths calculated successfully.")
 
 def heatmap():
     st.title('Eye Tracking Heatmap Overlay')
@@ -613,74 +753,124 @@ def heatmap():
     # File uploaders
     uploaded_image = st.file_uploader("Choose an image file", type=["png"])
     uploaded_csv = st.file_uploader("Choose an eye-tracking data CSV file", type=["csv"])
+    device_type = st.selectbox("Select device type", ['Tobii', 'WebGazer']) 
 
     if uploaded_image and uploaded_csv:
-        # Read the image
-        image = cv2.imdecode(np.frombuffer(uploaded_image.read(), np.uint8), cv2.IMREAD_COLOR)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        if device_type == 'Tobii':
+            # Replace the paths with the correct ones where your files are located
+            csv_file_path = uploaded_csv
+            image_file_path = uploaded_image
 
-        # Read the CSV file
-        eye_tracking_data = pd.read_csv(uploaded_csv)
+            # Load the remote data
+            remote = pd.read_csv(csv_file_path)
+            stim_img = Image.open(image_file_path)
 
-        if 'gaze_left_eye' in eye_tracking_data.columns and 'gaze_right_eye' in eye_tracking_data.columns:
-            gaze_points = []
+            # Preprocess the remote data
+            remote = remote.drop_duplicates()
+            remote = remote.sort_index()
+            remote[['x', 'y']] = remote['geometry'].str.extract(r'POINT \((\d+\.\d+) (\d+\.\d+)\)')
+            remote[['x', 'y']] = remote[['x', 'y']].astype(float)
 
-            for left_eye, right_eye in zip(eye_tracking_data['gaze_left_eye'], eye_tracking_data['gaze_right_eye']):
-                left_x, left_y = parse_coordinates(left_eye)
-                right_x, right_y = parse_coordinates(right_eye)
+            # Convert coordinates to pixels and create the heatmap
+            x = remote['x'].dropna() * 1920
+            y = remote['y'].dropna() * 1080
+            heatmap = np.zeros((stim_img.height, stim_img.width))
+            for i in range(len(x)):
+                new_x = round(x.iloc[i])
+                new_y = round(y.iloc[i])
+                if 0 <= new_x < stim_img.width and 0 <= new_y < stim_img.height:
+                    heatmap[new_y, new_x] += 1
+            # Apply a Gaussian filter to smooth the heatmap
+            sigma = 60
+            smoothed_heatmap = gaussian_filter(heatmap, sigma=sigma)
+            from matplotlib.colors import LinearSegmentedColormap
+            # Mask values below a certain threshold
+            threshold = 0.00001  # Adjust this threshold to your preference
+            masked_heatmap = np.ma.masked_where(smoothed_heatmap <= threshold, smoothed_heatmap)
 
-                if left_x is not None and left_y is not None:
-                    gaze_points.append((left_x, left_y))
-                if right_x is not None and right_y is not None:
-                    gaze_points.append((right_x, right_y))
+            # Custom colormap: transition from green (low intensity) to red (high intensity)
+            colors = [(0, (1, 1, 1, 0)), (0.5, 'green'), (1, 'red')]
+            custom_cmap = LinearSegmentedColormap.from_list('custom_heatmap', colors,N=256)
 
-                # Convert gaze points to numpy array
-                gaze_points = np.array(gaze_points)
+            # Display the original image with the heatmap overlay
+            plt.figure(figsize=(20, 10))  # Set the size of the figure
+            plt.imshow(stim_img)
+            plt.imshow(masked_heatmap, cmap=custom_cmap, alpha=0.5)
+            plt.axis('off')
+            plt.savefig('output_figure.png', dpi=1200, bbox_inches='tight', pad_inches=0)
+            st.image('output_figure.png')
+            print("Heatmap generated successfully.")
+        elif device_type == 'WebGazer':
+            csv_file_path = uploaded_csv
+            image_file_path = uploaded_image
 
-                # Create a heatmap
-                heatmap, xedges, yedges = np.histogram2d(gaze_points[:, 0], gaze_points[:, 1], bins=100)
-                heatmap = cv2.resize(heatmap, (image.shape[1], image.shape[0]))
+            # Load the remote data
+            remote = pd.read_csv(csv_file_path)
+            stim_img = Image.open(image_file_path)
 
-                # Normalize the heatmap
-                heatmap = (heatmap - heatmap.min()) / (heatmap.max() - heatmap.min())
-                heatmap = np.uint8(255 * heatmap)
-                heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
+            # parsing x and y coordinates
+            remote = remote.loc[remote.groupby(['pid','stimulus_number', 'coordinates','geometry'])['current_time'].idxmin()]
+            remote.loc[:,'coordinates'] = remote['coordinates'].str.replace("'", '"')
+            remote['data_dict'] = remote['coordinates'].apply(json.loads)
+            remote.loc[:,'x'] = remote['data_dict'].apply(lambda d: d['x'])
+            remote.loc[:,'y'] = remote['data_dict'].apply(lambda d: d['y'])
 
-                # Overlay the heatmap on the image
-                overlay = cv2.addWeighted(image, 0.6, heatmap, 0.4, 0)
+            # Convert coordinates to pixels and create the heatmap
+            x = remote['x'].dropna()
+            y = remote['y'].dropna() 
+            heatmap = np.zeros((stim_img.height, stim_img.width))
+            for i in range(len(x)):
+                new_x = round(x.iloc[i])
+                new_y = round(y.iloc[i])
+                if 0 <= new_x < stim_img.width and 0 <= new_y < stim_img.height:
+                    heatmap[new_y, new_x] += 1
 
-                # Display the image with heatmap overlay
-                st.image(overlay, caption='Heatmap Overlay', use_column_width=True)
+            # Apply a Gaussian filter to smooth the heatmap
+            sigma = 60  # This controls the amount of smoothing
+            smoothed_heatmap = gaussian_filter(heatmap, sigma=sigma)
+            # Mask values below a certain threshold
+            threshold = 0.00001  # Adjust this threshold to your preference
+            masked_heatmap = np.ma.masked_where(smoothed_heatmap <= threshold, smoothed_heatmap)
+            # Custom colormap: transition from green (low intensity) to red (high intensity)
+            colors = [(0, (1, 1, 1, 0)), (0.5, 'green'), (1, 'red')]
+            custom_cmap = LinearSegmentedColormap.from_list('custom_heatmap', colors,N=256)
+
+            # Display the original image with the heatmap overlay
+            plt.figure(figsize=(20, 10))  # Set the size of the figure
+            plt.imshow(stim_img)
+            plt.imshow(masked_heatmap, cmap=custom_cmap, alpha=0.5)
+            plt.axis('off')
+            plt.savefig('output_figure1.png', dpi=1200, bbox_inches='tight', pad_inches=0)
+            print("Heatmap generated successfully.")
         else:
-            st.error("CSV file must contain 'left_eye' and 'right_eye' columns.")
-    else:
-        st.info("Please upload both an image and a CSV file.")
+            st.error("Unsupported device type")
 
 
 def main():
     if 'page' not in st.session_state:
         st.session_state.page = 'Home'
     st.sidebar.title("Navigation")
-    selection = st.sidebar.radio("Go to", ["Home", "Step 1", "Step 2", "Step 3", "Scanpath", "Heatmap"], index=["Home", "Step 1", "Step 2", "Step 3", "Scanpath", "Heatmap"].index(st.session_state.page), key='sidebar_radio')
+    selection = st.sidebar.radio("Go to", ["Home", "Split Data", "Bounding Boxes", "Advanced Data Processing", "Scanpath", "Heatmap"], index=["Home", "Split Data", "Bounding Boxes", "Advanced Data Processing", "Scanpath", "Heatmap"].index(st.session_state.page), key='sidebar_radio')
     if selection != st.session_state.page:
         st.session_state.page = selection
     # Display the selected page
     if st.session_state.page == "Home":
         print("Home")
         home_page()
-    elif st.session_state.page == "Step 1":
-        print("Step 1")
+    elif st.session_state.page == "Split Data":
+        print("Split Data")
         step_1()
-    elif st.session_state.page == "Step 2":
-        print("Step 2")
+    elif st.session_state.page == "Bounding Boxes":
+        print("Bounding Boxes")
         step_2()
-    elif st.session_state.page == "Step 3":
-        print("Step 3")
+    elif st.session_state.page == "Advanced Data Processing":
+        print("Advanced Data Processing")
         step_3()
     elif st.session_state.page == "Scanpath":
-        print("Scan")
+        print("Scanpath")
         scanpath()
     elif st.session_state.page == "Heatmap":
+        print("Heatmap")
         heatmap()
 
 if __name__ == "__main__":
