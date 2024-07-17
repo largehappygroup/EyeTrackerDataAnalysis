@@ -150,28 +150,17 @@ def bounding_box_part5(uploaded_file):
         print(f'Folder "{f"./gaze"}" created.')
     else:
         print(f'Folder "{f"./gaze"}" already exists.')
-    gaze_files = os.listdir("./gaze") #this probably should be based on what's uploaded
+    gaze_files = os.listdir("./gaze") 
     reading_aois, writing_aois = make_aois()
-    for file in gaze_files: # this should not be necessary in the future
+    for file in gaze_files: 
         temp = re.split("_", file)
         pid = temp[0]
-        func = re.sub(".csv", "", temp[-1])
-        # print("file", file)
         # path for output
         path = "./annotated_gaze"
         try:
             os.mkdir(path)
         except:
-            print("folder already exists")
-        
-        # # eyetracking files
-        # eye_file = open(f"/home/zachkaras/pickle_data/{file}", "rb")
-        
-        # contents = pickle.load(eye_file)
-        all_files = dict() # will store all participant's files as a pkl file
-
-        # for key,values in contents.items(): # iterating through all participant's gaze files
-        #     print(key)    
+            print("folder already exists")   
         boxes = make_shapes(file)
         if re.search("reading", file):
             boxes = pd.concat([boxes, reading_aois])
@@ -179,10 +168,8 @@ def bounding_box_part5(uploaded_file):
             boxes = pd.concat([boxes, writing_aois])
         
         boxes = gpd.GeoSeries(boxes[0]) # turning boxes into geopandas object
-        
-        # df = pd.DataFrame.from_dict(values).T
+            
         df = pd.read_csv(f"gaze/{file}")
-        # df.insert(0, '', pid)
         num_cols = len(df.columns)
         
         if num_cols == 13: # older files didn't include data for distance from eye-tracker
@@ -198,7 +185,6 @@ def bounding_box_part5(uploaded_file):
                                 'irl_right_eye_coordinates', 'irl_left_point_on_screen', 
                                 'irl_right_point_on_screen']
         else:
-            #print(f"weird column length. Participant: {file} | File: {key} | # Columns: {num_cols}")
             continue # the only files without 14 or 18 columns have 0 columns
 
         # iterate through each file, get gaze point
@@ -215,10 +201,6 @@ def bounding_box_part5(uploaded_file):
         new_df = new_df.T
         new_df.to_csv(f"{path}/{file}.csv")
         print("Complete!")
-        # all_files[key] = new_df.to_dict('records') # dictionary to be stored as a pickle file
-        # pickle_dir = f"/home/zachkaras/annotated_pickle/{pid}_all.pkl"
-        # with open(pickle_dir, 'wb') as f:
-        #     pickle.dump(all_files, f)
 
 #zach's fourth step
 @st.cache_data
@@ -265,12 +247,10 @@ def bounding_box_part4(uploaded_file):
             # comment filter: if word is // or a flag is flilpped, just write "comment" in occurrence column
             if re.search(slashes, word) or row['y'] == comment_line:
                 comment_line = row['y']
-                #occurrences[word] = "comment"
                 continue
         
             if word not in occurrences:
                 occurrences[str(word)] = 0
-            # elif occurrences[word] == 'comment':
             
             else:
                 occurrences[str(word)] += 1
@@ -310,14 +290,12 @@ def bounding_box_part4(uploaded_file):
             'tobii_y', 'tobii_width', 'tobii_height'])
     for file in box_files:
         new_boxes = pd.DataFrame()
-        #print(file)
         process_file(file, new_boxes)
     bounding_box_part5(uploaded_file)
 
 #zach's third step
 st.cache_data
 def bounding_box_part3(uploaded_file):
-    # eye_files = os.listdir('../data/168/gaze/') # eye-tracking file
     box_files = os.listdir('./word_coordinates/') # all bounding boxes
     img_files = os.listdir('./stimuli/') # screenshots of all the stimuli
 
@@ -343,7 +321,6 @@ def bounding_box_part3(uploaded_file):
         box_name = re.sub('_boxes.csv', '', box_files[i]) #just the string
         imi = img_names.index(box_name) # index for image corresponding to word coordinates
         curr_img = img_files[imi] # getting the image file name
-        img = cv2.imread(str('./stimuli/' + curr_img))
     
         curr_boxes = pd.read_csv(str('./word_coordinates/' + box_files[i])) # reading in word coordinates
         new_df = pd.DataFrame()
@@ -354,7 +331,6 @@ def bounding_box_part3(uploaded_file):
             new_row = pd.concat([curr_boxes.iloc[ii, :], tobii_coords])
             new_df = pd.concat([new_df, new_row], axis=1)
         new_df = new_df.T
-        # new_df = new_df.drop(['Unnamed: 0'], axis=1)
         if not os.path.exists(f"./word_coordinates_preprocessed"):
             os.makedirs(f"./word_coordinates_preprocessed")
             print(f'Folder "{f"./word_coordinates_preprocessed"}" created.')
@@ -365,7 +341,6 @@ def bounding_box_part3(uploaded_file):
             'tobii_y', 'tobii_width', 'tobii_height'])
         # This for loop is used to filter out parentheses from the bounding box files
         # And keep track of the occurrences of words in the code (e.g. False.0, False.1, False.2)
-        count = 0
         for i, file in enumerate(box_files):
             curr_boxes = pd.read_csv(str('./word_coordinates_preprocessed/' + box_files[i])) # reading in word coordinates
             new_df = pd.DataFrame()
@@ -402,7 +377,6 @@ def bounding_box_part3(uploaded_file):
                 'tobii_y', 'tobii_width', 'tobii_height'])
             bounding_box_part4(uploaded_file)
 
-
 #zach's second step
 def bounding_box_part2(csv, pic):
     oracle = pd.read_csv('./pruned_seeds2.csv')
@@ -416,7 +390,6 @@ def bounding_box_part2(csv, pic):
     
         split_string = re.split(string=function, pattern=" |\n")
         split_string = [i for i in split_string if i]
-        filename = './word_coordinates/'+boxes
         strings = pd.read_csv('./word_coordinates/'+boxes, index_col=False)
         strings.columns = ['index', 'predicted_word', 'x', 'y', 'width', 'height']
         strings = strings.drop(columns=['index'])
@@ -428,7 +401,7 @@ def bounding_box_part2(csv, pic):
                 new_col = pd.concat([new_col, pd.Series(closest_matches[0])], ignore_index=True)
             except:
                 new_col = pd.concat([new_col, pd.Series('-----------')], ignore_index=True)
-        strings['word'] = new_col #.insert(loc=0, column='word', value=new_col)
+        strings['word'] = new_col 
         strings = strings[['word', 'predicted_word', 'x', 'y', 'width', 'height']]
         strings.to_csv(('./word_coordinates/'+boxes), index=False, header=True)
         
@@ -445,15 +418,12 @@ def bounding_box_part1(csv, pic):
     temp_file_path = f"./temp/{pic.name}"
     with open(temp_file_path, "wb") as f:
         f.write(pic.getbuffer())
-    #name = re.split('.png', pic)[0]
     name = pic.name.split('.png')[0]
-    #print(name)
         # temp contains all the images for each word, split by function name
     try:
         os.makedirs(f'./temp/{name}', exist_ok=True)
     except:
         print("file exists")
-    boxfile = '{name}_boxes.csv'.format(name=name)
     df = pd.DataFrame()
     row = np.where(stimdf['name'] == name) # finding row specific to each function
     i = row[0][0]
@@ -482,7 +452,6 @@ def bounding_box_part1(csv, pic):
     for ii, box in enumerate(contours):
         box = contours[(len(contours)-1)-ii]
         x, y, w, h = cv2.boundingRect(box)  # coordinates, width, and height
-        tangle = cv2.rectangle(img, (x, y), (x+w, y+h),(0, 255, 0, 2))  # drawing the rectangle
         word_img = img[y+1:(y+1)+(h-1), x+1:(x+1)+(w-1)] # actual pixel values for word
         resized = cv2.resize(word_img, (w*5, h*5),interpolation=cv2.INTER_CUBIC) # bumping up size to improve OCR
 
@@ -518,8 +487,7 @@ def bounding_box_part1(csv, pic):
     cv2.imwrite("./temp/{name}/{c}_func.png".format(c=name, name=name), img)
     df.columns = ['word', 'x', 'y', 'width', 'height']
     
-    df = df.sort_values(['y','x']) # some characters had different heights (B vs. +), so the below code 
-    count = 0                      # standardizes row values and sorts each row
+    df = df.sort_values(['y','x']) # some characters had different heights (B vs. +), so the below code
     standard = df.iloc[0, 2]       # now we have bounding box files that read sequentially in order
     for i, row in df.iterrows():
         if i < len(df)-1:
@@ -624,13 +592,6 @@ def scanpath():
     else:
         print(f'Folder "{f"./midprocessing"}" already exists.')
 
-    #with open("midprocessing/function_tokens.pkl", "rb") as f:
-        #function_tokens = pickle.load(f)
-    #with open("midprocessing/ASTs.pkl", "rb") as f:
-        #trees = pickle.load(f)
-    #with open("midprocessing/to_toss.pkl", "rb") as f:
-        #to_toss = pickle.load(f)
-
     def init_variables(filepath, df):
         aoi_start = -1
         if re.search("reading", filepath):
@@ -673,25 +634,18 @@ def scanpath():
 
     person = uploaded_csv.name.split('_')[0]
 
-    #print(person)
     metadir = "./annotated_gaze"
     file = uploaded_csv.name
     downsample = True if int(person) < 300 else False
     non_regressions[person] = {}
     name = file.split('_')[-1]
     name = re.sub(".csv", "", name)
-    #print(name)
-
-    # if this person's data needs to be excluded for this file
-    #if name in to_toss.keys() and int(person) in to_toss[name]:
-        #continue
 
     fullpath = f"{metadir}/{file}"
 
     preprocessed = preprocess(fullpath, downsample)
     scan_path, count = calculate_scan_path(file, preprocessed)
     new_scan_path = [item[:-2] for item in scan_path]
-    #print(scan_path)
 
     my_map = {}
 
@@ -728,7 +682,6 @@ def scanpath():
         scan_coordinates.append((new_x, new_y))
 
     scanpath_ellipse = []
-    #print(scan_coordinates)
     def draw_scanpath(image, scan_coordinates):
         draw = ImageDraw.Draw(stim_img)
         line_color = (255, 0, 0, 64)
@@ -746,6 +699,7 @@ def scanpath():
     
     stim_img = Image.open(uploaded_image)
     overlay_image = draw_scanpath(stim_img, scan_coordinates)
+    #plt.savefig('{name}_scanpath.png'.format(name=name), dpi=1200, bbox_inches='tight', pad_inches=0) ???
     st.image(overlay_image, caption='Scanpath Overlay')
 
     print("Scanpath calculated successfully.")
@@ -759,6 +713,7 @@ def heatmap():
     device_type = st.selectbox("Select device type", ['Tobii', 'WebGazer']) 
 
     if uploaded_image and uploaded_csv:
+        name = uploaded_image.name.split('.png')[0]
         if device_type == 'Tobii':
             # Replace the paths with the correct ones where your files are located
             csv_file_path = uploaded_csv
@@ -800,8 +755,8 @@ def heatmap():
             plt.imshow(stim_img)
             plt.imshow(masked_heatmap, cmap=custom_cmap, alpha=0.5)
             plt.axis('off')
-            plt.savefig('output_figure.png', dpi=1200, bbox_inches='tight', pad_inches=0)
-            st.image('output_figure.png')
+            plt.savefig('{name}_heatmap.png'.format(name=name), dpi=1200, bbox_inches='tight', pad_inches=0)
+            st.image('{name}_heatmap.png'.format(name=name))
             print("Heatmap generated successfully.")
         elif device_type == 'WebGazer':
             csv_file_path = uploaded_csv
@@ -843,7 +798,8 @@ def heatmap():
             plt.imshow(stim_img)
             plt.imshow(masked_heatmap, cmap=custom_cmap, alpha=0.5)
             plt.axis('off')
-            plt.savefig('output_figure1.png', dpi=1200, bbox_inches='tight', pad_inches=0)
+            plt.savefig('{name}_heatmap.png'.format(name=name), dpi=1200, bbox_inches='tight', pad_inches=0)
+            st.image('{name}_heatmap.png'.format(name=name))
             print("Heatmap generated successfully.")
         else:
             st.error("Unsupported device type")
