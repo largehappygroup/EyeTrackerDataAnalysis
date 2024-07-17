@@ -12,7 +12,6 @@ import math
 import json
 import statistics
 import numpy as np
-import pickle
 import difflib
 import geopandas as gpd
 from shapely.geometry import Point, Polygon
@@ -42,6 +41,7 @@ def make_list(file_list, device_type):
     return all_data
 
 #zach's fifth step
+@st.cache_data
 def bounding_box_part5(uploaded_file):
     Bounding_Boxes = {} # dictionary that holds geopandas shapes of all bounding boxes
     height = 1080 # height of computer screen
@@ -221,6 +221,7 @@ def bounding_box_part5(uploaded_file):
         #     pickle.dump(all_files, f)
 
 #zach's fourth step
+@st.cache_data
 def bounding_box_part4(uploaded_file):
     box_files = os.listdir("./word_coordinates_preprocessed/")
     # checks whether the word is "null", and makes sure "null" is still put
@@ -446,7 +447,7 @@ def bounding_box_part1(csv, pic):
         f.write(pic.getbuffer())
     #name = re.split('.png', pic)[0]
     name = pic.name.split('.png')[0]
-    print(name)
+    #print(name)
         # temp contains all the images for each word, split by function name
     try:
         os.makedirs(f'./temp/{name}', exist_ok=True)
@@ -466,6 +467,9 @@ def bounding_box_part1(csv, pic):
         print(f'Folder "{f"./stimuli"}" created.')
     else:
         print(f'Folder "{f"./stimuli"}" already exists.')
+    file_path = f"./stimuli/{pic.name}"
+    with open(file_path, "wb") as f:
+        f.write(pic.getbuffer())
     img = cv2.imread('./stimuli/{pic.name}'.format(pic=pic)) # 
     img = img[100:1000, 10:1150] #make this adjustable
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -536,12 +540,11 @@ def bounding_box_part1(csv, pic):
 
 def home_page():
     st.markdown("<h1 style='text-align: center;'>Visual Anchor</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center;'>Welcome to the home page! Proceed to step 1 using the navigation on the left.</p>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center;'>If files are already separated by participant, skip step 1 and proceed to step 2.</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center;'>Welcome to the home page! Use the navigation on the left to navigate between pages.</p>", unsafe_allow_html=True)
 
 def step_1(): 
     st.title("Data Splitting")
-    st.write("Please input your CSV File to be split into separate CSV files by participant.")
+    st.write("Please input your raw eye-tracking CSV File to be split into separate files by participant.")
     uploaded_file = st.file_uploader("Upload your eye-tracking data file", type=['csv'])
     if st.button('Split Data'):
         if uploaded_file:
@@ -549,15 +552,17 @@ def step_1():
             participants = df['participant_id'].unique()
             for participant in participants:
                 participant_df = df[df['participant_id'] == participant]
-                participant_df.to_csv(f"./gaze/{participant}.csv", index=False)
+                func = participant_df['function_name'].iloc[0]
+                participant_df.to_csv(f"./gaze/{participant}_gaze_reading_{func}.csv", index=False)
             st.success("Data split successfully.")
         else:
             st.error("Please upload a file to split.")
 
 def step_2():
     st.title("Bounding Box Creation")
+    st.write("Please input one particpant's CSV File and PNG image to create bounding boxes for.")
     #creates UI for uploading files
-    image_path = st.file_uploader("Upload images to overlay bounding boxes", accept_multiple_files=False, type=['png', 'jpg', 'jpeg'])
+    image_path = st.file_uploader("Upload images to overlay bounding boxes", accept_multiple_files=False, type=['png'])
     uploaded_file = st.file_uploader("Upload your eye-tracking data files", accept_multiple_files=True, type=['csv'])
     device_type = st.selectbox("Select device type", ['Tobii', 'WebGazer']) 
 
@@ -574,7 +579,6 @@ def step_2():
             combined_data = make_list(uploaded_file, device_type)
             for file in combined_data: #this will change eventually to restart afterwards
                 bounding_box_part1(file, image_path)
-                global name
                 name = image_path.name.split('.png')[0]
                 output_image = cv2.imread("./temp/{name}/{c}_func.png".format(c=name, name=name))
                 st.image(output_image, use_column_width=True)
@@ -598,6 +602,7 @@ def step_2():
 
 def step_3():
     st.title("Advanced Data Processing")
+    st.write("Please input your manually corrected CSV File.")
     st.write("This step may take several minutes.")
     uploaded_file = st.file_uploader("Upload your corrected data files", accept_multiple_files=True, type=['csv'])
     if st.button('Process Data'):
@@ -606,17 +611,9 @@ def step_3():
         else:
             st.error("Please upload corrected file")
 
-def parse_coordinates(coord_str):
-    match = re.match(r"\(([-+]?[0-9]*\.?[0-9]+),\s*([-+]?[0-9]*\.?[0-9]+)\)", coord_str)
-    if match:
-        return float(match.group(1)), float(match.group(2))
-    else:
-        return None, None
-
 def scanpath():
-
     st.title('Eye Tracking Scanpath Overlay')
-
+    st.write("Please input one particpant's annotated CSV File and PNG image to create the scanpath for.")
     # File uploaders
     uploaded_image = st.file_uploader("Choose an image file", type=["png"])
     uploaded_csv = st.file_uploader("Choose an eye-tracking data CSV file", type=["csv"])
@@ -672,21 +669,18 @@ def scanpath():
                     count += 1
         return scan_path, count
     
-    rscan_paths = {}
-    wscan_paths = {}
-    reading_functions = set()
-    writing_functions = set()
     non_regressions = {}
 
     person = uploaded_csv.name.split('_')[0]
 
-    print(person)
+    #print(person)
     metadir = "./annotated_gaze"
     file = uploaded_csv.name
     downsample = True if int(person) < 300 else False
     non_regressions[person] = {}
     name = file.split('_')[-1]
     name = re.sub(".csv", "", name)
+    #print(name)
 
     # if this person's data needs to be excluded for this file
     #if name in to_toss.keys() and int(person) in to_toss[name]:
@@ -696,21 +690,23 @@ def scanpath():
 
     preprocessed = preprocess(fullpath, downsample)
     scan_path, count = calculate_scan_path(file, preprocessed)
+    new_scan_path = [item[:-2] for item in scan_path]
     #print(scan_path)
+
+    my_map = {}
+
+    for item in new_scan_path:
+        if item in my_map:
+            my_map[item] += 1
+        else:
+            my_map[item] = 1
+    print(my_map)
+
+    
+    image_dir = "./temp/{name}".format(name=name)
+
     non_regressions[person][name] = count
 
-    if re.search("writing", file):
-        writing_functions.add(name)
-        if name not in wscan_paths:
-            wscan_paths[name] = [scan_path]
-        else:
-            wscan_paths[name].append(scan_path)
-    elif re.search("reading", file):
-        reading_functions.add(name)
-        if name not in rscan_paths:
-            rscan_paths[name] = [scan_path]
-        else:
-            rscan_paths[name].append(scan_path)
     remote = pd.read_csv(uploaded_csv)
     # Preprocess the remote data
     remote = remote.drop_duplicates()
@@ -722,34 +718,41 @@ def scanpath():
     x = remote['x'].dropna() * 1920
     y = remote['y'].dropna() * 1080
     scan_coordinates = []
+
+    def calculate_distance(coord1, coord2):
+        return math.sqrt((coord2[0] - coord1[0]) ** 2 + (coord2[1] - coord1[1]) ** 2)
+
     for i in range(len(x)):
         new_x = round(x.iloc[i])
         new_y = round(y.iloc[i])
         scan_coordinates.append((new_x, new_y))
 
-    print(scan_coordinates)
+    scanpath_ellipse = []
+    #print(scan_coordinates)
     def draw_scanpath(image, scan_coordinates):
         draw = ImageDraw.Draw(stim_img)
         line_color = (255, 0, 0, 64)
-        dot_color = (255, 0, 0, 32)  
+        dot_color = (255, 0, 0, 64)  
         line_width = 3
-        dot_radius = 1
-        for i in range(len(scan_coordinates) - 1):
-            draw.line((scan_coordinates[i], scan_coordinates[i+1]) , fill=line_color, width=line_width)
-        for point in scan_coordinates:
+        dot_radius = 2
+        for i in range(len(scan_coordinates) - 1): 
+            #if the coordinates are placed over a valid token, draw a line between them
+            if 30 < calculate_distance(scan_coordinates[i], scan_coordinates[i+1]) < 90:
+                draw.line((scan_coordinates[i], scan_coordinates[i+1]) , fill=line_color, width=line_width)
+                scanpath_ellipse.append(scan_coordinates[i])
+        for point in scanpath_ellipse:
             draw.ellipse((point[0] - dot_radius, point[1] - dot_radius, point[0] + dot_radius, point[1] + dot_radius), fill=dot_color)
         return image
     
     stim_img = Image.open(uploaded_image)
-    #plt.figure(figsize=(20, 10))  # Set the size of the figure
     overlay_image = draw_scanpath(stim_img, scan_coordinates)
     st.image(overlay_image, caption='Scanpath Overlay')
 
-    print("Scanpaths calculated successfully.")
+    print("Scanpath calculated successfully.")
 
 def heatmap():
     st.title('Eye Tracking Heatmap Overlay')
-
+    st.write("Please input one particpant's annotated CSV File and PNG image to create the scanpath for.")
     # File uploaders
     uploaded_image = st.file_uploader("Choose an image file", type=["png"])
     uploaded_csv = st.file_uploader("Choose an eye-tracking data CSV file", type=["csv"])
@@ -855,22 +858,22 @@ def main():
         st.session_state.page = selection
     # Display the selected page
     if st.session_state.page == "Home":
-        print("Home")
+        #print("Home")
         home_page()
     elif st.session_state.page == "Split Data":
-        print("Split Data")
+        #print("Split Data")
         step_1()
     elif st.session_state.page == "Bounding Boxes":
-        print("Bounding Boxes")
+        #print("Bounding Boxes")
         step_2()
     elif st.session_state.page == "Advanced Data Processing":
-        print("Advanced Data Processing")
+        #print("Advanced Data Processing")
         step_3()
     elif st.session_state.page == "Scanpath":
-        print("Scanpath")
+        #print("Scanpath")
         scanpath()
     elif st.session_state.page == "Heatmap":
-        print("Heatmap")
+        #print("Heatmap")
         heatmap()
 
 if __name__ == "__main__":
