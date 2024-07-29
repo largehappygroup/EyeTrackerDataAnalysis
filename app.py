@@ -646,7 +646,7 @@ def scanpath():
     preprocessed = preprocess(fullpath, downsample)
     scan_path, count = calculate_scan_path(file, preprocessed)
     new_scan_path = [item[:-2] for item in scan_path]
-
+    print(new_scan_path)
     my_map = {}
 
     for item in new_scan_path:
@@ -656,7 +656,39 @@ def scanpath():
             my_map[item] = 1
     print(my_map)
 
-    
+    #image_dir = f"./temp/{name}"
+
+    # Load token images and get their center coordinates
+    #token_coordinates = {}
+    #for token in os.listdir(image_dir):
+        #token_path = os.path.join(image_dir, token)
+        #token_image = Image.open(token_path)
+        #token_center = (token_image.width // 2, token_image.height // 2)
+        #token_coordinates[token] = token_center
+
+    #def draw_scanpath(image, token_coordinates, scan_path):
+        #draw = ImageDraw.Draw(image)
+        #line_color = (255, 0, 0, 64)
+        #dot_color = (255, 0, 0, 64)
+        #line_width = 3
+        #dot_radius = 5  # Increase dot radius to make it more visible
+        #previous_coord = None
+
+        #for token in scan_path:
+            #if token in token_coordinates:
+                #coord = token_coordinates[token]
+                # Draw a dot for the current token
+                #draw.ellipse((coord[0] - dot_radius, coord[1] - dot_radius, coord[0] + dot_radius, coord[1] + dot_radius), fill=dot_color)
+                #if previous_coord:
+                    # Draw a line from the previous token to the current token
+                    #draw.line((previous_coord, coord), fill=line_color, width=line_width)
+                #previous_coord = coord
+        #return image
+
+    #stim_img = Image.open(uploaded_image)
+    #overlay_image = draw_scanpath(stim_img, token_coordinates, new_scan_path)
+    #st.image(overlay_image, caption='Scanpath Overlay')
+
     image_dir = "./temp/{name}".format(name=name)
 
     non_regressions[person][name] = count
@@ -701,7 +733,7 @@ def scanpath():
     overlay_image = draw_scanpath(stim_img, scan_coordinates)
     #plt.savefig('{name}_scanpath.png'.format(name=name), dpi=1200, bbox_inches='tight', pad_inches=0) ???
     st.image(overlay_image, caption='Scanpath Overlay')
-
+    
     print("Scanpath calculated successfully.")
 
 def heatmap():
